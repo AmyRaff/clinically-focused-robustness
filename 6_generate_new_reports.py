@@ -136,14 +136,14 @@ def extract_concepts(report):
 def clean_report(str):
 
     # Remove empty lines
-    filtered = [a + '.' for a in str if a != " \n"]  # remove empty lines
+    filtered = [a for a in str if a != " \n"]  # remove empty lines
     # Only want FINDINGS and IMPRESSION - remove everything before
     impression_idx, findings_idx = None, None
     start_idx = 0
     for line in range(len(filtered)):
         if "IMPRESSION:" in filtered[line]:
             impression_idx = line
-        elif "FINDINGS:" in filtered[line] or "CHEST" in filtered[line]:
+        elif "FINDINGS:" in filtered[line] or ("CHEST" in filtered[line] and 'PA' not in filtered[line]):
             findings_idx = line
     if impression_idx is not None:
         # if impression but no findings, start at impression
@@ -162,8 +162,9 @@ def clean_report(str):
         text += line
     # Regex cleaning - spaces, newlines, tabs
     out = ""
+    # print(filtered)
     for line in filtered:
-        line = re.sub(r"\b[A-Z]+\b", " ", line)  # remove title lines (all uppercase)
+        # line = re.sub(r"\b[A-Z]+\b", " ", line)  # remove title lines (all uppercase)
         line = re.sub(r"_|:", " ", line)
         line = re.sub("\n", " ", line)
         line = re.sub(",", " ", line)
@@ -175,10 +176,12 @@ def clean_report(str):
         out = out + line
     # Split into sentences, make lowercase
     out = out.split(".")
+    #print(out)
     out = [a[1:] if a.startswith(" ") else a for a in out]
     out = [a.lower() for a in out]
     # get list of all cleaned sentences for output analysis
     all_sentences = out
+    #print(out)
     out = [a for a in out if len(a) > 2]
     out = [a for a in out if len(a.split()) > 1]
     out = [a for a in out if re.search(r"[a-zA-Z]+", a)]
@@ -193,11 +196,15 @@ def clean_report(str):
     out = [a for a in out if not "not enlarged" in a]
     out = [a for a in out if not "not visible" in a]
     out = [a for a in out if not "evaluation" in a]
+    out = [a for a in out if not "anonymized" in a]
+    out = [a for a in out if not "years" in a]
     out = [a for a in out if not "not evident" in a]
+    out = [a for a in out if not "dates are offset" in a]
     out = [a for a in out if not "exclude" in a]
     out = [a for a in out if not "resolved" in a]
     # maybe - not a pathology
     out = [a for a in out if not "granuloma" in a]
+    #print(out)
     # find whether each original sentence is used for output analysis
     is_present = [True if a in out else False for a in all_sentences]
     # Handling negative mentions
@@ -221,7 +228,11 @@ def clean_report(str):
         if "should not be mistaken for" in line:
             idx = line.index("should not be mistaken for")
             line = line[:idx]
+        if "i have" in line:
+            idx = line.index("i have")
+            line = line[:idx]
         filtered_out.append(line)
+    filtered_out = [a for a in filtered_out if len(a.split(' ')) > 1]
     return filtered_out, text, all_sentences, is_present
 
 def check_label(concs):
@@ -370,7 +381,7 @@ def generate_mapping():
 
 # TODO: when using smaller testing set, keep original mapping
 import pickle
-# pickle.dump(generate_mapping(), open('sentence_concepts.pkl', 'wb'))
+#pickle.dump(generate_mapping(), open('sentence_concepts.pkl', 'wb'))
 
 sentences_to_concepts = pickle.load(open('sentence_concepts.pkl', 'rb'))
 print(type(sentences_to_concepts))
@@ -382,9 +393,12 @@ adversarial_reports = []
 new_labels = []
 failed = {}
 worked = 0
+orig_labs = []
 for r in tqdm(range(len(all_reports))):
     test_report = all_reports[r]
     orig_vector = all_full_report_concs[r]
+    orig_lab = check_label(orig_vector)
+    orig_labs.append(orig_lab)
     sentence_vectors = [a for a in all_sentence_concs[r] if a != [0] * 17]
     targets = perturbations[r]
 
@@ -512,11 +526,14 @@ print(len(new_labels))
 assert len(adversarial_reports) == 6 * len(all_reports)
 
 adv_orig_labels = []
-for l in all_correct_labels:
+for l in orig_labs:
     for i in range(6): # NOTE
         adv_orig_labels.append(l)
 print(len(adv_orig_labels))
 
-pickle.dump(adversarial_reports, open('mimic_six_adversarial_reports.pkl', 'wb'))
+print(len(adversarial_reports))
+print(len(adv_orig_labels))
+print(len(new_labels))
+pickle.dump(adversarial_reports, open('six_adversarial_reports.pkl', 'wb'))
 pickle.dump(new_labels, open('six_adv_report_new_labels.pkl', 'wb'))
 pickle.dump(adv_orig_labels, open('six_adv_report_orig_labels.pkl', 'wb'))

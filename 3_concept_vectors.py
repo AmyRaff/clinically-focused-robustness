@@ -2,7 +2,7 @@ import re
 import pandas as pd
 import os
 from tqdm import tqdm
-
+import pickle
 
 def clean_report(str):
 
@@ -153,14 +153,14 @@ def extract_concepts(report):
 #### Metadata
 # NOTE: TOGGLE FOR FULL AND TEST
 
-metadata = pd.read_csv("mimic-cxr-2.0.0-metadata.csv")
+metadata = pd.read_csv("data/mimic-cxr-2.0.0-metadata.csv")
 
 # image_info = pd.read_csv("undersampling/images.txt", sep=" ", header=None)
-image_info = pd.read_csv("images.txt", sep=" ", header=None)
+image_info = pd.read_csv("data/images.txt", sep=" ", header=None)
 image_info.columns = ["id", "name"]
 
 #class_info = pd.read_csv("undersampling/image_class_labels.txt", sep=" ", header=None)
-class_info = pd.read_csv("image_class_labels.txt", sep=" ", header=None)
+class_info = pd.read_csv("data/image_class_labels.txt", sep=" ", header=None)
 class_info.columns = ["id", "label"]
 
 # train_info = pd.read_csv("undersampling/train_test_split.txt", sep=" ", header=None)
@@ -245,43 +245,36 @@ for i in range(len(all_concepts)):
 reports, labels, filenames = [], [], []
 
 training = 0
-# for i in tqdm(range(len(train_info['id']))):
-for i in tqdm(range(len(set(class_info['id'])))): # NOTE: set
-    # get test set - NOTE: TOFFLE FOR FULL AND TEST
-    # id = train_info['id'][i]
-    id = class_info['id'][i]
-    # is_train = train_info['is_train'][i]
-    is_train = 0
-    image = image_info[image_info['id'] == id]['name'].values[0]
-    if is_train == 0 and image in os.listdir('undersampling/images/'):
-        training +=1
+class_ids = list(set(class_info['id']))  # Precompute unique IDs
+image_dir_files = set(os.listdir('undersampling/images/'))  # Convert to set for O(1) lookup
+
+for id in tqdm(class_ids):
+    image = image_info.loc[image_info['id'] == id, 'name'].values[0]
+
+    if image in image_dir_files:  # No need for is_train == 0 as it's always 0
+        training += 1
         filenames.append(image)
-        # duplication handling
-        if "_" not in image:
-            filename = image.split(".")[0]
-        else:
-            filename = image.split("_")[1].split(".")[0]
-        data = metadata[metadata["dicom_id"] == filename]
+
+        # More efficient filename extraction
+        filename = image.split("_")[-1].split(".")[0]
+
+        data = metadata.loc[metadata["dicom_id"] == filename]
         subject = str(data["subject_id"].values[0])
         study = str(data["study_id"].values[0])
-        dir = "p" + subject[:2]
-        path = (
-            "../concept_bottleneck_clustered/1 - Concept Extraction/files/"
-            + dir
-            + "/p"
-            + subject
-            + "/s"
-            + study
-            + ".txt"
-        )
+        
+        dir_path = f"p{subject[:2]}"
+        path = f"../concept_bottleneck_clustered/1 - Concept Extraction/files/{dir_path}/p{subject}/s{study}.txt"
         reports.append(path)
-        # get ground truth label
-        id = image_info[image_info["name"] == filename + '.jpg']["id"].values[0]
-        label = class_info[class_info["id"] == id]["label"].values[0]
+
+        # Get ground truth label
+        img_id = image_info.loc[image_info["name"] == f"{filename}.jpg", "id"].values[0]
+        label = class_info.loc[class_info["id"] == img_id, "label"].values[0]
         labels.append(label)
 
 
+
 ### Write to output file
+all_concept_vectors = []
 with open('concept_representations.txt', 'w') as f:
     written, with_zero = 0, 0
     for i in tqdm(range(len(reports))):
@@ -325,8 +318,10 @@ with open('concept_representations.txt', 'w') as f:
             f.write(f'CONCEPTS: {report_concepts}\n')
             f.write(f'SENTENCE CONCEPTS: {sentence_concepts}\n\n')
             written +=1
+            all_concept_vectors.append(report_concepts)
 
 print(written) # out of 4100
 print(with_zero)
+pickle.dump(all_concept_vectors, open("all_concept_vectors.pkl", "wb"))
 
 # 34532

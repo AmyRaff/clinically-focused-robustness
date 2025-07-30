@@ -1,6 +1,7 @@
 import ast
 from tqdm import tqdm 
 import shutil
+import os
 
 with open('concept_representations.txt', 'r') as f:
     data = f.readlines()
@@ -63,6 +64,8 @@ with open('replaced_labels.txt', 'w') as f:
         if changed:
             # keep track of images whose labels have changed
             f.write(f'{filename} -- {orig_label} -> {present}\n\n')
+            if filename in os.listdir(f'undersampling/{orig_label}/'):
+                os.remove(f'undersampling/{orig_label}/{filename}')
             num_different +=1
 
 print(num_different)
